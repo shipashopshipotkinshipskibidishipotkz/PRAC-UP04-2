@@ -16,6 +16,9 @@ class AppScaffold extends StatelessWidget {
   static const _destinations = [
     (icon: Icons.menu_book, label: 'Книги'),
     (icon: Icons.person, label: 'Авторы'),
+    (icon: Icons.category_outlined, label: 'Жанры'),
+    (icon: Icons.business_outlined, label: 'Издательства'),
+    (icon: Icons.badge_outlined, label: 'Читатели'),
   ];
 
   @override
@@ -30,7 +33,10 @@ class AppScaffold extends StatelessWidget {
           onDestinationSelected: onDestinationSelected,
           destinations: [
             for (final d in _destinations)
-              NavigationDestination(icon: Icon(d.icon), label: d.label),
+              NavigationDestination(
+                icon: Icon(d.icon),
+                label: d.label == 'Издательства' ? 'Издатели' : d.label,
+              ),
           ],
         ),
       );
@@ -43,9 +49,10 @@ class AppScaffold extends StatelessWidget {
             selectedIndex: selectedIndex,
             onDestinationSelected: onDestinationSelected,
             extended: size == ScreenSize.expanded,
-            labelType: size == ScreenSize.expanded
-                ? NavigationRailLabelType.none
-                : NavigationRailLabelType.all,
+            labelType:
+                size == ScreenSize.expanded
+                    ? NavigationRailLabelType.none
+                    : NavigationRailLabelType.all,
             destinations: [
               for (final d in _destinations)
                 NavigationRailDestination(

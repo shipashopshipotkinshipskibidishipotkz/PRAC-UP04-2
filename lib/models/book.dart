@@ -1,4 +1,8 @@
-class Book {
+import '../core/json_values.dart';
+import 'library_entity.dart';
+
+class Book implements LibraryEntity {
+  @override
   final int id;
   final String title;
   final String isbn;
@@ -9,6 +13,7 @@ class Book {
   final List<int> genreIds;
   final int copiesTotal;
   final int copiesAvailable;
+  @override
   final DateTime? deletedAt;
 
   const Book({
@@ -25,7 +30,40 @@ class Book {
     this.deletedAt,
   });
 
+  @override
   bool get isDeleted => deletedAt != null;
+
+  @override
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'isbn': isbn,
+    'year': year,
+    'pages': pages,
+    'publisherId': publisherId,
+    'authorIds': authorIds,
+    'genreIds': genreIds,
+    'copiesTotal': copiesTotal,
+    'copiesAvailable': copiesAvailable,
+    'deletedAt': deletedAt?.toIso8601String(),
+  };
+
+  factory Book.fromJson(Map<String, dynamic> json) => Book(
+    id: JsonValues.integer(json['id']),
+    title: JsonValues.text(json['title']),
+    isbn: JsonValues.text(json['isbn']),
+    year: JsonValues.integer(json['year']),
+    pages: JsonValues.integer(json['pages']),
+    publisherId: JsonValues.integer(
+      json['publisherId'],
+      JsonValues.integer(JsonValues.object(json['publisher'])['id']),
+    ),
+    authorIds: JsonValues.relatedIds(json, 'authorIds', 'authors'),
+    genreIds: JsonValues.relatedIds(json, 'genreIds', 'genres'),
+    copiesTotal: JsonValues.integer(json['copiesTotal']),
+    copiesAvailable: JsonValues.integer(json['copiesAvailable']),
+    deletedAt: JsonValues.date(json['deletedAt']),
+  );
 
   Book copyWith({
     String? title,
