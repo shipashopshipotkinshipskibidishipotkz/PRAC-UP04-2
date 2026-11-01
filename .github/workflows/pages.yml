@@ -22,7 +22,8 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: dart format --output=none --set-exit-if-changed lib
+      - run: flutter test
+      - run: dart format --output=none --set-exit-if-changed lib test
       - name: Build
         shell: bash
         run: |
