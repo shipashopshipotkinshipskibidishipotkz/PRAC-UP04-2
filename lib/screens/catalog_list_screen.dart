@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../core/entity_fields.dart';
 import '../core/validators.dart';
+import '../core/permissions.dart';
+import '../state/auth_notifier.dart';
 import '../models/catalog_query.dart';
 import '../models/entity_kind.dart';
 import '../models/library_entity.dart';
@@ -132,6 +134,8 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
   @override
   Widget build(BuildContext context) {
     final repository = context.watch<LibraryRepository>();
+    final auth = context.watch<AuthNotifier>();
+    final canEdit = auth.can(Permission.editCatalog);
     final kind = widget.kind;
     final result = _notifier.result;
     final columns = switch (kind) {
@@ -173,34 +177,35 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
         icon: const Icon(Icons.visibility_outlined),
         onPressed: () => context.go('${kind.path}/${row.id}'),
       ),
-      if (!row.isDeleted)
+      if (!row.isDeleted && canEdit)
         IconButton(
           tooltip: 'Редактировать',
           icon: const Icon(Icons.edit_outlined),
           onPressed: () => context.go('${kind.path}/${row.id}/edit'),
         ),
-      if (row.isDeleted)
+      if (row.isDeleted && auth.can(Permission.restore))
         IconButton(
           tooltip: 'Восстановить',
           icon: const Icon(Icons.restore),
           onPressed:
               () => EntityActions.restore(context, repository, kind, row.id),
-        )
-      else
+        ),
+      if (!row.isDeleted && canEdit)
         IconButton(
           tooltip: 'В корзину',
           icon: const Icon(Icons.delete_outline),
           onPressed:
               () => EntityActions.delete(context, repository, kind, [row.id]),
         ),
-      IconButton(
-        tooltip: 'Удалить навсегда',
-        icon: const Icon(Icons.delete_forever_outlined),
-        onPressed:
-            () => EntityActions.delete(context, repository, kind, [
-              row.id,
-            ], hard: true),
-      ),
+      if (auth.can(Permission.hardDelete))
+        IconButton(
+          tooltip: 'Удалить навсегда',
+          icon: const Icon(Icons.delete_forever_outlined),
+          onPressed:
+              () => EntityActions.delete(context, repository, kind, [
+                row.id,
+              ], hard: true),
+        ),
     ];
 
     return AppScaffold(
@@ -224,11 +229,12 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
                 kind.label,
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
-              FilledButton.icon(
-                onPressed: () => context.go('${kind.path}/new'),
-                icon: const Icon(Icons.add),
-                label: const Text('Добавить'),
-              ),
+              if (canEdit)
+                FilledButton.icon(
+                  onPressed: () => context.go('${kind.path}/new'),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Добавить'),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -305,13 +311,15 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
                               _query.copyWith(ascending: !_query.ascending),
                             ),
                       ),
-                      FilterChip(
-                        label: const Text('Показать удалённые'),
-                        selected: _query.includeDeleted,
-                        onSelected:
-                            (value) =>
-                                _apply(_query.copyWith(includeDeleted: value)),
-                      ),
+                      if (auth.can(Permission.restore))
+                        FilterChip(
+                          label: const Text('Показать удалённые'),
+                          selected: _query.includeDeleted,
+                          onSelected:
+                              (value) => _apply(
+                                _query.copyWith(includeDeleted: value),
+                              ),
+                        ),
                       TextButton(
                         onPressed: () {
                           _search.clear();
@@ -325,7 +333,7 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
               ),
             ),
           ),
-          if (_selected.isNotEmpty)
+          if (canEdit && _selected.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Wrap(
@@ -366,11 +374,13 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
               ),
             )
           else if (result.items.isEmpty)
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(40),
               child: Center(
                 child: Text(
-                  'Записи не найдены. Измените фильтры или добавьте запись.',
+                  canEdit
+                      ? 'Записи не найдены. Измените фильтры или добавьте запись.'
+                      : 'Записи не найдены. Измените фильтры.',
                 ),
               ),
             )
@@ -382,20 +392,27 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(kind.titleOf(row)),
-                        subtitle:
-                            row.isDeleted ? const Text('В корзине') : null,
-                        value: _selected.contains(row.id),
-                        onChanged:
-                            (_) => setState(
-                              () =>
-                                  _selected.contains(row.id)
-                                      ? _selected.remove(row.id)
-                                      : _selected.add(row.id),
-                            ),
-                      ),
+                      if (canEdit)
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(kind.titleOf(row)),
+                          subtitle:
+                              row.isDeleted ? const Text('В корзине') : null,
+                          value: _selected.contains(row.id),
+                          onChanged:
+                              (_) => setState(
+                                () =>
+                                    _selected.contains(row.id)
+                                        ? _selected.remove(row.id)
+                                        : _selected.add(row.id),
+                              ),
+                        ),
+                      if (!canEdit)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(kind.titleOf(row)),
+                          onTap: () => context.go('${kind.path}/${row.id}'),
+                        ),
                       for (final column in columns.skip(1))
                         Text('${column.$2}: ${valueOf(row, column.$1)}'),
                       Wrap(children: actions(row)),
@@ -427,12 +444,14 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
               labelOf: kind.titleOf,
               selected: _selected,
               onToggleSelect:
-                  (id) => setState(
-                    () =>
-                        _selected.contains(id)
-                            ? _selected.remove(id)
-                            : _selected.add(id),
-                  ),
+                  !canEdit
+                      ? null
+                      : (id) => setState(
+                        () =>
+                            _selected.contains(id)
+                                ? _selected.remove(id)
+                                : _selected.add(id),
+                      ),
               sortField:
                   columns.any((c) => c.$1 == _query.sortField)
                       ? _query.sortField

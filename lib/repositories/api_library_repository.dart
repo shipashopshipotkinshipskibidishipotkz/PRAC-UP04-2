@@ -13,8 +13,6 @@ import 'library_repository.dart';
 
 class ApiLibraryRepository extends LibraryRepository {
   final Dio _dio;
-  String? _token;
-  String? _accountName;
   final _references = <EntityKind, List<LibraryEntity>>{};
   final _referenceRequests = <EntityKind, Future<List<LibraryEntity>>>{};
   final _publisherAuthors = <int, Set<int>>{};
@@ -22,45 +20,15 @@ class ApiLibraryRepository extends LibraryRepository {
   final _pages = <EntityKind, List<LibraryEntity>>{};
   final _details = <EntityKind, LibraryEntity>{};
 
-  ApiLibraryRepository(this._dio) {
-    _dio.interceptors.insert(
-      0,
-      InterceptorsWrapper(
-        onRequest: (options, handler) {
-          if (_token != null) {
-            options.headers['Authorization'] = 'Bearer $_token';
-          }
-          handler.next(options);
-        },
-      ),
-    );
-  }
-  @override
-  bool get isAuthenticated => _token != null;
-  @override
-  String? get accountName => _accountName;
+  ApiLibraryRepository(this._dio);
 
-  @override
-  Future<void> signIn(String username, String password) => apiGuard(() async {
-    final response = await _dio.post<dynamic>(
-      '/auth/login',
-      data: {'username': username.trim(), 'password': password},
-    );
-    final data = _object(response.data);
-    final token = JsonValues.text(data['accessToken']);
-    if (token.isEmpty) throw const InvalidResponseException();
-    _token = token;
-    _accountName = JsonValues.text(
-      JsonValues.object(data['user'])['fullName'],
-      username,
-    );
-    notifyListeners();
-  });
-  @override
-  void signOut() {
-    _token = null;
-    _accountName = null;
-    notifyListeners();
+  void clearSessionData() {
+    _pages.clear();
+    _details.clear();
+    _references.clear();
+    _referenceRequests.clear();
+    _publisherAuthors.clear();
+    _publisherRequests.clear();
   }
 
   Map<String, dynamic> _object(Object? value) {

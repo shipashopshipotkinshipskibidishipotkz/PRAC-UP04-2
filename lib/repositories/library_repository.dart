@@ -10,10 +10,6 @@ import '../models/page_result.dart';
 import '../models/publisher.dart';
 
 abstract class LibraryRepository extends ChangeNotifier {
-  bool get isAuthenticated;
-  String? get accountName;
-  Future<void> signIn(String username, String password);
-  void signOut();
   Future<PageResult<LibraryEntity>> find(
     EntityKind kind,
     CatalogQuery query, {

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../core/api_exceptions.dart';
+import '../core/permissions.dart';
+import '../state/auth_notifier.dart';
 import '../core/entity_fields.dart';
 import '../models/book.dart';
 import '../models/entity_kind.dart';
@@ -99,6 +101,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final repository = _repository;
+    final auth = context.watch<AuthNotifier>();
     final kind = widget.kind;
     final id = widget.id;
     final row = _row;
@@ -175,7 +178,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen> {
                                 link(EntityKind.genres, id),
                             ],
                           ),
-                          if (!row.isDeleted)
+                          if (!row.isDeleted &&
+                              auth.can(Permission.manageLoans))
                             FilledButton.icon(
                               icon: const Icon(Icons.book_outlined),
                               label: const Text('Оформить выдачу'),
@@ -228,14 +232,15 @@ class _EntityDetailScreenState extends State<EntityDetailScreen> {
                           spacing: 12,
                           runSpacing: 12,
                           children: [
-                            if (!row.isDeleted)
+                            if (!row.isDeleted &&
+                                auth.can(Permission.editCatalog))
                               FilledButton.icon(
                                 onPressed:
                                     () => context.go('${kind.path}/$id/edit'),
                                 icon: const Icon(Icons.edit_outlined),
                                 label: const Text('Редактировать'),
                               ),
-                            if (row.isDeleted)
+                            if (row.isDeleted && auth.can(Permission.restore))
                               FilledButton.icon(
                                 onPressed:
                                     () => EntityActions.restore(
@@ -247,7 +252,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen> {
                                 icon: const Icon(Icons.restore),
                                 label: const Text('Восстановить'),
                               ),
-                            if (!row.isDeleted)
+                            if (!row.isDeleted &&
+                                auth.can(Permission.editCatalog))
                               OutlinedButton.icon(
                                 onPressed:
                                     () => EntityActions.delete(
@@ -259,18 +265,19 @@ class _EntityDetailScreenState extends State<EntityDetailScreen> {
                                 icon: const Icon(Icons.delete_outline),
                                 label: const Text('В корзину'),
                               ),
-                            OutlinedButton.icon(
-                              onPressed:
-                                  () => EntityActions.delete(
-                                    context,
-                                    repository,
-                                    kind,
-                                    [id],
-                                    hard: true,
-                                  ),
-                              icon: const Icon(Icons.delete_forever_outlined),
-                              label: const Text('Удалить навсегда'),
-                            ),
+                            if (auth.can(Permission.hardDelete))
+                              OutlinedButton.icon(
+                                onPressed:
+                                    () => EntityActions.delete(
+                                      context,
+                                      repository,
+                                      kind,
+                                      [id],
+                                      hard: true,
+                                    ),
+                                icon: const Icon(Icons.delete_forever_outlined),
+                                label: const Text('Удалить навсегда'),
+                              ),
                           ],
                         ),
                       ],

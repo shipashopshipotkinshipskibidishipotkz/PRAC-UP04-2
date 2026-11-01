@@ -53,9 +53,12 @@ function sign(payload) {
 
 function verify(token) {
   if (typeof token !== 'string' || !token.includes('.')) return null;
-  const [body, mac] = token.split('.');
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [body, mac] = parts;
+  if (!/^[A-Za-z0-9_-]{43}$/.test(mac)) return null;
   const expected = crypto.createHmac('sha256', SECRET).update(body).digest('base64url');
-  if (mac !== expected) return null;
+  if (mac.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) return null;
   let payload;
   try {
     payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
@@ -551,6 +554,17 @@ function requireRole(res, user, minRole) {
 
 const COLLECTIONS = ['books', 'authors', 'genres', 'publishers', 'readers', 'loans'];
 
+function ensureReader(user) {
+  if (user.readerId && db.readers.some((r) => r.id === user.readerId && !r.deletedAt)) return;
+  // A registered account gets its own reader record, never another person's record.
+  const id = push('readers', { fullName: user.fullName, email: user.email, phone: '' });
+  user.readerId = id;
+  const issued = new Date();
+  const expires = new Date(issued); expires.setFullYear(expires.getFullYear() + 1);
+  push('cards', { readerId: id, number: `REG-${id.toString().padStart(6, '0')}`,
+    issuedAt: issued.toISOString(), expiresAt: expires.toISOString() });
+}
+
 // ─────────────────────────────── маршруты ───────────────────────────────
 
 async function handle(req, res, url) {
@@ -566,6 +580,7 @@ async function handle(req, res, url) {
 
   // ── служебные ──
   if (path === '/api/__reset' && method === 'POST') {
+    if (!requireRole(res, user, 'admin')) return;
     seed();
     return send(res, 200, { message: 'Данные восстановлены в исходное состояние' });
   }
@@ -582,12 +597,15 @@ async function handle(req, res, url) {
     const errors = {};
     const username = String(body.username || '').trim();
     const password = String(body.password || '');
-    if (username.length < 3) errors.username = 'Логин не короче трёх символов';
+    if (!/^[\p{L}\p{N}_.-]{3,50}$/u.test(username)) errors.username = 'Логин: 3–50 букв, цифр, точек, дефисов или подчёркиваний';
     else if (db.users.find((u) => u.username === username)) errors.username = 'Такой логин уже занят';
     if (password.length < 8) errors.password = 'Пароль не короче восьми символов';
     else if (!/\d/.test(password)) errors.password = 'Пароль должен содержать цифру';
-    if (body.email && !/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(String(body.email)))
+    else if (!/[^\p{L}\p{N}\s]/u.test(password)) errors.password = 'Пароль должен содержать специальный символ';
+    if (!String(body.fullName || '').trim()) errors.fullName = 'Укажите ФИО';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(body.email || '').trim()))
       errors.email = 'Некорректный адрес почты';
+    else if (db.users.some((u) => u.email.toLowerCase() === String(body.email).trim().toLowerCase())) errors.email = 'Почта уже зарегистрирована';
 
     if (Object.keys(errors).length) {
       return send(res, 422, { message: 'Ошибка валидации', errors });
@@ -596,12 +614,14 @@ async function handle(req, res, url) {
     const id = push('users', {
       username,
       passwordHash: hash(password),
-      fullName: String(body.fullName || username),
-      email: String(body.email || ''),
+      fullName: String(body.fullName).trim(),
+      email: String(body.email).trim(),
       role: 'reader',
       readerId: null,
     });
-    return send(res, 201, expandUser(db.users.find((u) => u.id === id)));
+    const registered = db.users.find((u) => u.id === id);
+    ensureReader(registered);
+    return send(res, 201, expandUser(registered));
   }
 
   if (path === '/api/auth/login' && method === 'POST') {
@@ -635,7 +655,7 @@ async function handle(req, res, url) {
     if (!payload || payload.type !== 'refresh' || !db.refreshTokens.has(token)) {
       return fail(res, 401, 'Токен обновления недействителен');
     }
-    const found = db.users.find((u) => u.id === payload.sub);
+    const found = db.users.find((u) => u.id === payload.sub && !u.deletedAt);
     if (!found) return fail(res, 401, 'Пользователь не найден');
 
     db.refreshTokens.delete(token);
@@ -664,6 +684,54 @@ async function handle(req, res, url) {
     const rows = applySort(db.users.filter((u) => !u.deletedAt), q.sort);
     const page = paginate(rows, q);
     return send(res, 200, { ...page, items: page.items.map(expandUser) });
+  }
+
+  const roleMatch = path.match(/^\/api\/users\/(\d+)\/role$/);
+  if (roleMatch && method === 'PATCH') {
+    if (!requireRole(res, user, 'admin')) return;
+    const target = db.users.find((u) => u.id === Number(roleMatch[1]) && !u.deletedAt);
+    if (!target) return fail(res, 404, 'Пользователь не найден');
+    const body = await readBody(req);
+    if (!body || !Object.hasOwn(ROLE_LEVEL, body.role)) return send(res, 422, { message: 'Ошибка валидации', errors: { role: 'Выберите reader, librarian или admin' } });
+    if (target.id === user.id && body.role !== 'admin') return fail(res, 409, 'Нельзя понизить собственную роль администратора');
+    target.role = body.role;
+    if (target.role === 'reader') ensureReader(target);
+    return send(res, 200, expandUser(target));
+  }
+
+  if (path === '/api/statistics' && method === 'GET') {
+    if (!requireRole(res, user, 'admin')) return;
+    const books = db.books.filter((b) => !b.deletedAt);
+    const active = db.loans.filter((l) => !l.deletedAt && !l.returnedAt);
+    return send(res, 200, {
+      books: books.length, copies: books.reduce((n, b) => n + b.copiesTotal, 0),
+      available: books.reduce((n, b) => n + b.copiesAvailable, 0),
+      readers: db.readers.filter((r) => !r.deletedAt).length,
+      activeLoans: active.length, overdueLoans: active.filter((l) => new Date(l.dueAt) < new Date()).length,
+      users: db.users.filter((u) => !u.deletedAt).length,
+    });
+  }
+
+  // All resource routes require a signed access token. UI role caches are ignored.
+  if (COLLECTIONS.some((name) => path === `/api/${name}` || path.startsWith(`/api/${name}/`))) {
+    if (!requireRole(res, user, 'reader')) return;
+  }
+
+  const renewMatch = path.match(/^\/api\/loans\/(\d+)\/renew$/);
+  if (renewMatch && method === 'POST') {
+    if (!user) return fail(res, 401, 'Требуется аутентификация');
+    const loan = db.loans.find((l) => l.id === Number(renewMatch[1]) && !l.deletedAt);
+    if (!loan) return fail(res, 404, 'Выдача не найдена');
+    if (user.role !== 'reader' || loan.readerId !== user.readerId) return fail(res, 403, 'Можно продлевать только собственные выдачи читателя');
+    if (loan.returnedAt) return fail(res, 409, 'Выдача уже закрыта');
+    const body = await readBody(req);
+    const days = Number(body && body.days);
+    if (!Number.isInteger(days) || days < 1 || days > 30) return send(res, 422, { message: 'Ошибка валидации', errors: { days: 'Срок продления от 1 до 30 дней' } });
+    if ((loan.renewals || 0) >= 2) return fail(res, 409, 'Выдачу можно продлить не более двух раз');
+    if (new Date(loan.dueAt) < new Date()) return fail(res, 409, 'Просроченную выдачу нельзя продлить. Обратитесь в библиотеку.');
+    loan.dueAt = new Date(new Date(loan.dueAt).getTime() + days * 86400000).toISOString();
+    loan.renewals = (loan.renewals || 0) + 1;
+    return send(res, 200, expandLoan(loan));
   }
 
   // ── специальные операции с выдачами ──
@@ -764,6 +832,7 @@ async function handle(req, res, url) {
       if (collection === 'loans' && user && user.role === 'reader') {
         rows = rows.filter((l) => l.readerId === user.readerId);
       }
+      if (collection === 'readers' && user.role === 'reader') rows = rows.filter((r) => r.id === user.readerId);
 
       rows = applyFilters(collection, rows, q);
       rows = applySort(rows, q.sort, collection);
@@ -775,6 +844,7 @@ async function handle(req, res, url) {
     if (id !== null && method === 'GET') {
       const row = db[collection].find((x) => x.id === id && (q.includeDeleted === 'true' || !x.deletedAt));
       if (!row) return fail(res, 404, 'Объект не найден');
+      if (user.role === 'reader' && ((collection === 'loans' && row.readerId !== user.readerId) || (collection === 'readers' && row.id !== user.readerId))) return fail(res, 403, 'Нельзя просматривать данные другого читателя');
       return send(res, 200, expand(row));
     }
 
@@ -798,6 +868,7 @@ async function handle(req, res, url) {
     // изменение
     if (id !== null && (method === 'PUT' || method === 'PATCH')) {
       if (!requireRole(res, user, 'librarian')) return;
+      if (collection === 'loans') return fail(res, 400, 'Для выдачи используйте операции возврата и продления');
       const row = db[collection].find((x) => x.id === id && !x.deletedAt);
       if (!row) return fail(res, 404, 'Объект не найден');
 
@@ -824,6 +895,7 @@ async function handle(req, res, url) {
 
       const index = db[collection].findIndex((x) => x.id === id);
       if (index === -1) return fail(res, 404, 'Объект не найден');
+      if (collection === 'loans' && !db.loans[index].returnedAt) return fail(res, 409, 'Сначала оформите возврат книги');
 
       const related = linkedCount(collection, id);
       if (related) return fail(res, 409, `Удаление невозможно: связанных книг — ${related}. Учитываются и книги в корзине.`);
