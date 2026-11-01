@@ -1,0 +1,59 @@
+name: Web
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      API_BASE_URL: ${{ vars.API_BASE_URL || 'https://prac-up04-2.onrender.com/api' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.2'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: dart format --output=none --set-exit-if-changed lib
+      - name: Build
+        shell: bash
+        run: |
+          if [[ "$API_BASE_URL" != /api && "$API_BASE_URL" != https://* ]]; then
+            echo 'API_BASE_URL must use HTTPS'
+            exit 1
+          fi
+          repo="${GITHUB_REPOSITORY#*/}"
+          base="/$repo/"
+          if [[ "${repo,,}" == "${GITHUB_REPOSITORY_OWNER,,}.github.io" ]]; then base=/; fi
+          flutter build web --release --no-web-resources-cdn --pwa-strategy=none --base-href "$base" --dart-define="API_BASE_URL=$API_BASE_URL"
+          find build/web/canvaskit -type f -name '*.symbols' -delete
+          find build/web/canvaskit -maxdepth 1 -type f -name 'skwasm*' -delete
+          cp build/web/index.html build/web/404.html
+          touch build/web/.nojekyll
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: build/web
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/deploy-pages@v4
+        id: deployment

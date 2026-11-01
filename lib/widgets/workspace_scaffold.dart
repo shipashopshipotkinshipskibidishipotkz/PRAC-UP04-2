@@ -4,14 +4,17 @@ import 'package:provider/provider.dart';
 import '../core/permissions.dart';
 import '../models/entity_kind.dart';
 import '../state/auth_notifier.dart';
+import '../core/breakpoints.dart';
 
 class WorkspaceScaffold extends StatelessWidget {
   final String location;
   final Widget child;
+  final PreferredSizeWidget? appBar;
   const WorkspaceScaffold({
     super.key,
     required this.location,
     required this.child,
+    this.appBar,
   });
   @override
   Widget build(BuildContext context) {
@@ -48,35 +51,85 @@ class WorkspaceScaffold extends StatelessWidget {
         (path: '/admin/statistics', label: 'Статистика', icon: Icons.bar_chart),
     ];
     final index = destinations.indexWhere((d) => d.path == location);
-    if (MediaQuery.sizeOf(context).width < 700) {
+    final screen = screenSizeOf(context);
+    Widget content() => Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1440),
+        child: SizedBox(width: double.infinity, child: child),
+      ),
+    );
+    if (screen == ScreenSize.compact) {
+      final primaryPaths = [
+        '/',
+        '/books',
+        auth.can(Permission.ownLoans)
+            ? '/my-loans'
+            : auth.can(Permission.users)
+            ? '/admin/users'
+            : auth.can(Permission.manageLoans)
+            ? '/loans'
+            : '/authors',
+      ];
+      final primary = [
+        for (final path in primaryPaths)
+          destinations.firstWhere((d) => d.path == path),
+      ];
+      final selected = primary.indexWhere((d) => d.path == location);
       return Scaffold(
-        appBar: AppBar(title: Text(destinations[index < 0 ? 0 : index].label)),
-        drawer: Drawer(
-          child: SafeArea(
-            child: ListView(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('Библиотечная система'),
-                ),
-                for (final d in destinations)
-                  ListTile(
-                    selected: d.path == location,
-                    leading: Icon(d.icon),
-                    title: Text(d.label),
-                    onTap: () {
-                      Navigator.pop(context);
-                      context.go(d.path);
-                    },
+        appBar: appBar,
+        body: content(),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: selected < 0 ? 3 : selected,
+          onDestinationSelected: (i) {
+            if (i < 3) {
+              context.go(primary[i].path);
+              return;
+            }
+            showModalBottomSheet<void>(
+              context: context,
+              useSafeArea: true,
+              isScrollControlled: true,
+              constraints: const BoxConstraints(maxWidth: 560),
+              builder:
+                  (sheetContext) => ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.sizeOf(context).height * .75,
+                    ),
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text('Разделы библиотеки'),
+                        ),
+                        for (final d in destinations)
+                          ListTile(
+                            selected: d.path == location,
+                            leading: Icon(d.icon),
+                            title: Text(d.label),
+                            onTap: () {
+                              Navigator.pop(sheetContext);
+                              context.go(d.path);
+                            },
+                          ),
+                      ],
+                    ),
                   ),
-              ],
+            );
+          },
+          destinations: [
+            for (final d in primary)
+              NavigationDestination(icon: Icon(d.icon), label: d.label),
+            const NavigationDestination(
+              icon: Icon(Icons.more_horiz),
+              label: 'Ещё',
             ),
-          ),
+          ],
         ),
-        body: child,
       );
     }
-    final extended = MediaQuery.sizeOf(context).width >= 1100;
+    final extended = screen == ScreenSize.expanded;
     return Scaffold(
       body: Row(
         children: [
@@ -88,12 +141,12 @@ class WorkspaceScaffold extends StatelessWidget {
                 labelType:
                     extended
                         ? NavigationRailLabelType.none
-                        : NavigationRailLabelType.all,
+                        : NavigationRailLabelType.none,
                 onDestinationSelected: (i) => context.go(destinations[i].path),
                 destinations: [
                   for (final d in destinations)
                     NavigationRailDestination(
-                      icon: Icon(d.icon),
+                      icon: Tooltip(message: d.label, child: Icon(d.icon)),
                       label: Text(d.label),
                     ),
                 ],
@@ -101,7 +154,12 @@ class WorkspaceScaffold extends StatelessWidget {
             ),
           ),
           const VerticalDivider(width: 1),
-          Expanded(child: child),
+          Expanded(
+            child:
+                appBar == null
+                    ? content()
+                    : Scaffold(appBar: appBar, body: content()),
+          ),
         ],
       ),
     );

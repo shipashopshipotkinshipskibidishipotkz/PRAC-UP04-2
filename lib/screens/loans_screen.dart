@@ -132,126 +132,125 @@ class _LoansScreenState extends State<LoansScreen> {
   @override
   Widget build(BuildContext context) => WorkspaceScaffold(
     location: widget.own ? '/my-loans' : '/loans',
-    child: Scaffold(
-      appBar: AppBar(
-        title: Text(widget.own ? 'Мои выдачи' : 'Выдачи и возвраты'),
-        actions: const [ApiConnectionButton()],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          if (!widget.own)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                onPressed: () => context.go('/books'),
-                icon: const Icon(Icons.add),
-                label: const Text('Оформить выдачу из каталога'),
-              ),
+
+    appBar: AppBar(
+      title: Text(widget.own ? 'Мои выдачи' : 'Выдачи и возвраты'),
+      actions: const [ApiConnectionButton()],
+    ),
+    child: ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        if (!widget.own)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: () => context.go('/books'),
+              icon: const Icon(Icons.add),
+              label: const Text('Оформить выдачу из каталога'),
             ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final entry
-                  in <String?, String>{
-                    null: 'Все',
-                    'active': 'Активные',
-                    'overdue': 'Просроченные',
-                    'returned': 'Возвращённые',
-                  }.entries)
-                ChoiceChip(
-                  label: Text(entry.value),
-                  selected: _status == entry.key,
-                  onSelected: (_) {
-                    _status = entry.key;
-                    _page = 1;
-                    _load();
-                  },
-                ),
-              IconButton(
-                tooltip: 'Обновить',
-                onPressed: _load,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
           ),
-          const SizedBox(height: 16),
-          if (_loading)
-            const SizedBox(height: 240, child: LoadingState())
-          else if (_error != null)
-            ErrorState(message: _error!, onRetry: _load)
-          else if (_result.items.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(32),
-              child: EmptyState(message: 'Выдачи не найдены'),
-            )
-          else ...[
-            for (final loan in _result.items)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${(loan['book'] as Map?)?['title'] ?? 'Книга удалена'}',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      if (!widget.own)
-                        Text(
-                          'Читатель: ${(loan['reader'] as Map?)?['fullName'] ?? '—'}',
-                        ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Выдана: ${_date(loan['issuedAt'])} · Вернуть до: ${_date(loan['dueAt'])}',
-                      ),
-                      Text(
-                        'Статус: ${switch (loan['status']) {
-                          'returned' => 'Возвращена',
-                          'overdue' => 'Просрочена',
-                          _ => 'На руках',
-                        }}',
-                      ),
-                      if (loan['returnedAt'] == null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: OutlinedButton.icon(
-                            onPressed:
-                                _busy.contains(loan['id'])
-                                    ? null
-                                    : () => _action(loan['id'] as int),
-                            icon: Icon(
-                              widget.own
-                                  ? Icons.update
-                                  : Icons.assignment_turned_in_outlined,
-                            ),
-                            label: Text(
-                              widget.own
-                                  ? 'Продлить на 14 дней'
-                                  : 'Оформить возврат',
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
+        const SizedBox(height: 16),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final entry
+                in <String?, String>{
+                  null: 'Все',
+                  'active': 'Активные',
+                  'overdue': 'Просроченные',
+                  'returned': 'Возвращённые',
+                }.entries)
+              ChoiceChip(
+                label: Text(entry.value),
+                selected: _status == entry.key,
+                onSelected: (_) {
+                  _status = entry.key;
+                  _page = 1;
+                  _load();
+                },
               ),
-            PaginationControls(
-              pageResult: _result,
-              onPageChanged: (page) {
-                _page = page;
-                _load();
-              },
-              onSizeChanged: (size) {
-                _size = size;
-                _page = 1;
-                _load();
-              },
+            IconButton(
+              tooltip: 'Обновить',
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
             ),
           ],
+        ),
+        const SizedBox(height: 16),
+        if (_loading)
+          const SizedBox(height: 240, child: LoadingState())
+        else if (_error != null)
+          ErrorState(message: _error!, onRetry: _load)
+        else if (_result.items.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: EmptyState(message: 'Выдачи не найдены'),
+          )
+        else ...[
+          for (final loan in _result.items)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${(loan['book'] as Map?)?['title'] ?? 'Книга удалена'}',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    if (!widget.own)
+                      Text(
+                        'Читатель: ${(loan['reader'] as Map?)?['fullName'] ?? '—'}',
+                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Выдана: ${_date(loan['issuedAt'])} · Вернуть до: ${_date(loan['dueAt'])}',
+                    ),
+                    Text(
+                      'Статус: ${switch (loan['status']) {
+                        'returned' => 'Возвращена',
+                        'overdue' => 'Просрочена',
+                        _ => 'На руках',
+                      }}',
+                    ),
+                    if (loan['returnedAt'] == null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: OutlinedButton.icon(
+                          onPressed:
+                              _busy.contains(loan['id'])
+                                  ? null
+                                  : () => _action(loan['id'] as int),
+                          icon: Icon(
+                            widget.own
+                                ? Icons.update
+                                : Icons.assignment_turned_in_outlined,
+                          ),
+                          label: Text(
+                            widget.own
+                                ? 'Продлить на 14 дней'
+                                : 'Оформить возврат',
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          PaginationControls(
+            pageResult: _result,
+            onPageChanged: (page) {
+              _page = page;
+              _load();
+            },
+            onSizeChanged: (size) {
+              _size = size;
+              _page = 1;
+              _load();
+            },
+          ),
         ],
-      ),
+      ],
     ),
   );
 }

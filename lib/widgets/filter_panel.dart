@@ -65,8 +65,14 @@ class FilterPanel extends StatelessWidget {
                 SizedBox(width: 240, child: searchField),
                 ...filters,
                 if (toggleDeleted != null) toggleDeleted!,
-                FilledButton(onPressed: onApply, child: const Text('Применить')),
-                OutlinedButton(onPressed: onReset, child: const Text('Сбросить')),
+                FilledButton(
+                  onPressed: onApply,
+                  child: const Text('Применить'),
+                ),
+                OutlinedButton(
+                  onPressed: onReset,
+                  child: const Text('Сбросить'),
+                ),
               ],
             );
           },

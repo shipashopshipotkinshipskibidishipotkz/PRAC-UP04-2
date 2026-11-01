@@ -33,25 +33,38 @@ class AuthorCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       author.fullName,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   if (author.isDeleted)
-                    const Chip(label: Text('Удалён'), visualDensity: VisualDensity.compact),
+                    const Chip(
+                      label: Text('Удалён'),
+                      visualDensity: VisualDensity.compact,
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
               Text('Страна: ${author.country}'),
-              Text('Годы жизни: ${author.birthYear} – ${author.deathYear ?? 'н.в.'}'),
+              Text(
+                'Годы жизни: ${author.birthYear} – ${author.deathYear ?? 'н.в.'}',
+              ),
               const SizedBox(height: 12),
               Row(
                 children: [
                   if (onEdit != null)
                     IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
                   if (author.isDeleted && onRestore != null)
-                    IconButton(icon: const Icon(Icons.restore), onPressed: onRestore),
+                    IconButton(
+                      icon: const Icon(Icons.restore),
+                      onPressed: onRestore,
+                    ),
                   if (!author.isDeleted && onDelete != null)
-                    IconButton(icon: const Icon(Icons.delete), onPressed: onDelete),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: onDelete,
+                    ),
                 ],
               ),
             ],

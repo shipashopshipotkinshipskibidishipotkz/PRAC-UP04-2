@@ -1,3 +1,5 @@
+import '../widgets/responsive_grid.dart';
+import '../core/breakpoints.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -384,42 +386,63 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
                 ),
               ),
             )
-          else if (MediaQuery.sizeOf(context).width < 700)
-            ...result.items.map(
-              (row) => Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (canEdit)
-                        CheckboxListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(kind.titleOf(row)),
-                          subtitle:
-                              row.isDeleted ? const Text('В корзине') : null,
-                          value: _selected.contains(row.id),
-                          onChanged:
-                              (_) => setState(
-                                () =>
-                                    _selected.contains(row.id)
-                                        ? _selected.remove(row.id)
-                                        : _selected.add(row.id),
-                              ),
+          else if (screenSizeOf(context) != ScreenSize.expanded)
+            ResponsiveGrid(
+              columns: screenSizeOf(context) == ScreenSize.compact ? 1 : 2,
+              children:
+                  result.items
+                      .map(
+                        (row) => Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (canEdit)
+                                  CheckboxListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      kind.titleOf(row),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle:
+                                        row.isDeleted
+                                            ? const Text('В корзине')
+                                            : null,
+                                    value: _selected.contains(row.id),
+                                    onChanged:
+                                        (_) => setState(
+                                          () =>
+                                              _selected.contains(row.id)
+                                                  ? _selected.remove(row.id)
+                                                  : _selected.add(row.id),
+                                        ),
+                                  ),
+                                if (!canEdit)
+                                  ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      kind.titleOf(row),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    onTap:
+                                        () => context.go(
+                                          '${kind.path}/${row.id}',
+                                        ),
+                                  ),
+                                for (final column in columns.skip(1))
+                                  Text(
+                                    '${column.$2}: ${valueOf(row, column.$1)}',
+                                  ),
+                                Wrap(children: actions(row)),
+                              ],
+                            ),
+                          ),
                         ),
-                      if (!canEdit)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(kind.titleOf(row)),
-                          onTap: () => context.go('${kind.path}/${row.id}'),
-                        ),
-                      for (final column in columns.skip(1))
-                        Text('${column.$2}: ${valueOf(row, column.$1)}'),
-                      Wrap(children: actions(row)),
-                    ],
-                  ),
-                ),
-              ),
+                      )
+                      .toList(),
             )
           else
             EntityTable<LibraryEntity>(

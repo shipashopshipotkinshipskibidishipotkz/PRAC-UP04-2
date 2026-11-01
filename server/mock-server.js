@@ -20,6 +20,8 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const nodePath = require('node:path');
 
 // ─────────────────────────── параметры запуска ───────────────────────────
 
@@ -29,9 +31,12 @@ function arg(name, fallback) {
   return i !== -1 && args[i + 1] ? args[i + 1] : fallback;
 }
 
-const PORT = Number(arg('port', 8080));
-const ORIGIN = arg('origin', '*');
-const SECRET = 'учебный-ключ-не-для-продакшена';
+const PORT = Number(arg('port', process.env.PORT || 8080));
+const ORIGIN = arg('origin', process.env.CLIENT_ORIGIN || '*');
+const WEB_DIR = arg('web-dir', '');
+const WEB_ROOT = WEB_DIR ? nodePath.resolve(WEB_DIR) : null;
+const WEB_BASE = '/' + String(arg('web-base', '')).replace(/^\/+|\/+$/g, '') + '/';
+const SECRET = process.env.TOKEN_SECRET || crypto.randomBytes(32).toString('hex');
 const ACCESS_TTL = Number(arg('ttl', 900));      // секунд
 const REFRESH_TTL = 60 * 60 * 24 * 7;
 
@@ -952,10 +957,41 @@ function normalize(collection, body) {
 
 // ─────────────────────────────── запуск ───────────────────────────────
 
+function serveWeb(req, res, pathname) {
+  if (!WEB_ROOT || pathname.startsWith('/api/')) return false;
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  const base = WEB_BASE === '//' ? '/' : WEB_BASE;
+  if (pathname === base.slice(0, -1) && base !== '/') {
+    res.writeHead(302, { Location: base }); res.end(); return true;
+  }
+  if (!pathname.startsWith(base)) return false;
+  let relative;
+  try { relative = decodeURIComponent(pathname.slice(base.length)); }
+  catch { res.writeHead(400); res.end(); return true; }
+  let file = nodePath.resolve(WEB_ROOT, relative || 'index.html');
+  const outside = nodePath.relative(WEB_ROOT, file);
+  if (outside.startsWith('..') || nodePath.isAbsolute(outside)) {
+    res.writeHead(403); res.end(); return true;
+  }
+  if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
+    if (nodePath.extname(relative)) { res.writeHead(404); res.end(); return true; }
+    file = nodePath.join(WEB_ROOT, 'index.html');
+  }
+  if (!fs.existsSync(file)) { res.writeHead(404); res.end(); return true; }
+  const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+    '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.json': 'application/json',
+    '.css': 'text/css', '.png': 'image/png', '.ico': 'image/x-icon', '.ttf': 'font/ttf', '.otf': 'font/otf' };
+  res.writeHead(200, { 'Content-Type': mime[nodePath.extname(file)] || 'application/octet-stream',
+    'Content-Length': fs.statSync(file).size, 'Cache-Control': 'no-cache' });
+  if (req.method === 'HEAD') res.end(); else fs.createReadStream(file).pipe(res);
+  return true;
+}
+
 seed();
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+  if (serveWeb(req, res, url.pathname)) return;
 
   // Предварительный запрос браузера. Без этого обработчика
   // на web не заработает ни один запрос с заголовком Authorization.

@@ -16,11 +16,14 @@ class InMemoryBookRepository implements BookRepository {
 
     if (q.search.trim().isNotEmpty) {
       final needle = q.search.trim().toLowerCase();
-      rows = rows
-          .where((b) =>
-              b.title.toLowerCase().contains(needle) ||
-              b.isbn.toLowerCase().contains(needle))
-          .toList();
+      rows =
+          rows
+              .where(
+                (b) =>
+                    b.title.toLowerCase().contains(needle) ||
+                    b.isbn.toLowerCase().contains(needle),
+              )
+              .toList();
     }
 
     if (q.genreId != null) {

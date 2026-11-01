@@ -2,17 +2,18 @@ import 'package:go_router/go_router.dart';
 import '../models/entity_kind.dart';
 import '../screens/catalog_list_screen.dart';
 import '../screens/entity_detail_screen.dart';
-import '../screens/entity_form_screen.dart';
+import '../screens/entity_form_screen.dart' deferred as forms;
 import '../screens/home_screen.dart';
 import '../screens/not_found_screen.dart';
 import 'form_exit_guard.dart';
 import 'permissions.dart';
+import '../widgets/deferred_screen.dart';
 import '../state/auth_notifier.dart';
 import '../screens/auth_screen.dart';
 import '../screens/session_screen.dart';
 import '../screens/loans_screen.dart';
-import '../screens/users_screen.dart';
-import '../screens/statistics_screen.dart';
+import '../screens/users_screen.dart' deferred as users;
+import '../screens/statistics_screen.dart' deferred as statistics;
 import '../screens/librarian_screen.dart';
 
 GoRouter createAppRouter(
@@ -71,10 +72,21 @@ GoRouter createAppRouter(
     GoRoute(path: '/my-loans', builder: (_, _) => const LoansScreen(own: true)),
     GoRoute(path: '/loans', builder: (_, _) => const LoansScreen()),
     GoRoute(path: '/desk', builder: (_, _) => const LibrarianScreen()),
-    GoRoute(path: '/admin/users', builder: (_, _) => const UsersScreen()),
+    GoRoute(
+      path: '/admin/users',
+      builder:
+          (_, _) => DeferredScreen(
+            load: users.loadLibrary,
+            builder: () => users.UsersScreen(),
+          ),
+    ),
     GoRoute(
       path: '/admin/statistics',
-      builder: (_, _) => const StatisticsScreen(),
+      builder:
+          (_, _) => DeferredScreen(
+            load: statistics.loadLibrary,
+            builder: () => statistics.StatisticsScreen(),
+          ),
     ),
     for (final kind in EntityKind.values)
       GoRoute(
@@ -88,8 +100,11 @@ GoRouter createAppRouter(
           GoRoute(
             path: 'new',
             builder:
-                (context, state) =>
-                    EntityFormScreen(key: state.pageKey, kind: kind),
+                (context, state) => DeferredScreen(
+                  key: state.pageKey,
+                  load: forms.loadLibrary,
+                  builder: () => forms.EntityFormScreen(kind: kind),
+                ),
             onExit:
                 (context, state) async =>
                     !auth.isAuthenticated ||
@@ -111,10 +126,11 @@ GoRouter createAppRouter(
                   final id = int.tryParse(state.pathParameters['id'] ?? '');
                   return id == null || id < 1
                       ? NotFoundScreen(location: state.uri.toString())
-                      : EntityFormScreen(
+                      : DeferredScreen(
                         key: state.pageKey,
-                        kind: kind,
-                        id: id,
+                        load: forms.loadLibrary,
+                        builder:
+                            () => forms.EntityFormScreen(kind: kind, id: id),
                       );
                 },
                 onExit:

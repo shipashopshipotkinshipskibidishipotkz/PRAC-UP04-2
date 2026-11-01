@@ -30,6 +30,7 @@ class RelationException implements Exception {
   String toString() =>
       'Удаление невозможно: связанных книг — $count. Сначала измените их связи или физически удалите книги. Учитываются и книги в корзине.';
 }
+
 class PersistentLibraryRepository extends ChangeNotifier {
   static const storageKey = 'library_catalog_v3';
   static const schemaVersion = 3;

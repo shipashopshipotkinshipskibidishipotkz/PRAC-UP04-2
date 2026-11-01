@@ -16,12 +16,15 @@ class InMemoryAuthorRepository implements AuthorRepository {
 
     if (q.search.trim().isNotEmpty) {
       final needle = q.search.trim().toLowerCase();
-      rows = rows
-          .where((a) =>
-              a.lastName.toLowerCase().contains(needle) ||
-              a.firstName.toLowerCase().contains(needle) ||
-              a.country.toLowerCase().contains(needle))
-          .toList();
+      rows =
+          rows
+              .where(
+                (a) =>
+                    a.lastName.toLowerCase().contains(needle) ||
+                    a.firstName.toLowerCase().contains(needle) ||
+                    a.country.toLowerCase().contains(needle),
+              )
+              .toList();
     }
 
     if (q.country != null) {
@@ -37,7 +40,9 @@ class InMemoryAuthorRepository implements AuthorRepository {
     rows.sort((a, b) {
       final result = switch (q.sortField) {
         'birthYear' => a.birthYear.compareTo(b.birthYear),
-        'firstName' => a.firstName.toLowerCase().compareTo(b.firstName.toLowerCase()),
+        'firstName' => a.firstName.toLowerCase().compareTo(
+          b.firstName.toLowerCase(),
+        ),
         _ => a.lastName.toLowerCase().compareTo(b.lastName.toLowerCase()),
       };
       return q.sortAscending ? result : -result;

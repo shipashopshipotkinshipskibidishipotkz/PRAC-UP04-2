@@ -8,42 +8,37 @@ class LibrarianScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => WorkspaceScaffold(
     location: '/desk',
-    child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Рабочее место библиотекаря'),
-        actions: const [ApiConnectionButton()],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          Text(
-            'Обслуживание читателей',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Оформите новую выдачу из карточки книги или зарегистрируйте возврат.',
-          ),
-          const SizedBox(height: 24),
-          for (final item in [
-            (Icons.menu_book_outlined, 'Оформить выдачу', '/books'),
-            (
-              Icons.assignment_turned_in_outlined,
-              'Выдачи и возвраты',
-              '/loans',
+
+    appBar: AppBar(
+      title: const Text('Рабочее место библиотекаря'),
+      actions: const [ApiConnectionButton()],
+    ),
+    child: ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text(
+          'Обслуживание читателей',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Оформите новую выдачу из карточки книги или зарегистрируйте возврат.',
+        ),
+        const SizedBox(height: 24),
+        for (final item in [
+          (Icons.menu_book_outlined, 'Оформить выдачу', '/books'),
+          (Icons.assignment_turned_in_outlined, 'Выдачи и возвраты', '/loans'),
+          (Icons.badge_outlined, 'Читатели и билеты', '/readers'),
+        ])
+          Card(
+            child: ListTile(
+              leading: Icon(item.$1),
+              title: Text(item.$2),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.go(item.$3),
             ),
-            (Icons.badge_outlined, 'Читатели и билеты', '/readers'),
-          ])
-            Card(
-              child: ListTile(
-                leading: Icon(item.$1),
-                title: Text(item.$2),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => context.go(item.$3),
-              ),
-            ),
-        ],
-      ),
+          ),
+      ],
     ),
   );
 }

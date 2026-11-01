@@ -108,104 +108,101 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   Widget build(BuildContext context) => WorkspaceScaffold(
     location: '/admin/users',
-    child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Пользователи и роли'),
-        actions: const [ApiConnectionButton()],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          const Text(
-            'Новые учётные записи получают роль читателя. Изменение роли проверяет сервер.',
-          ),
-          const SizedBox(height: 16),
-          if (_loading)
-            const SizedBox(height: 240, child: LoadingState())
-          else if (_error != null)
-            ErrorState(message: _error!, onRetry: _load)
-          else ...[
-            for (final data in _result.items)
-              Builder(
-                builder: (context) {
-                  final user = AppUser.fromJson(data);
-                  final self =
-                      context.watch<AuthNotifier>().user?.id == user.id;
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Wrap(
-                        spacing: 24,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          SizedBox(
-                            width: 260,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  user.fullName,
-                                  style:
-                                      Theme.of(context).textTheme.titleMedium,
-                                ),
-                                Text('${user.username} · ${user.email}'),
-                                if (self) const Text('Ваша учётная запись'),
-                              ],
-                            ),
-                          ),
-                          SizedBox(
-                            width: 220,
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'Роль',
-                                border: OutlineInputBorder(),
+
+    appBar: AppBar(
+      title: const Text('Пользователи и роли'),
+      actions: const [ApiConnectionButton()],
+    ),
+    child: ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const Text(
+          'Новые учётные записи получают роль читателя. Изменение роли проверяет сервер.',
+        ),
+        const SizedBox(height: 16),
+        if (_loading)
+          const SizedBox(height: 240, child: LoadingState())
+        else if (_error != null)
+          ErrorState(message: _error!, onRetry: _load)
+        else ...[
+          for (final data in _result.items)
+            Builder(
+              builder: (context) {
+                final user = AppUser.fromJson(data);
+                final self = context.watch<AuthNotifier>().user?.id == user.id;
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Wrap(
+                      spacing: 24,
+                      runSpacing: 12,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 260,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                user.fullName,
+                                style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<Role>(
-                                  isExpanded: true,
-                                  key: ValueKey('${user.id}:${user.role}'),
-                                  value: user.role,
-                                  items: [
-                                    for (final role in Role.values)
-                                      DropdownMenuItem(
-                                        value: role,
-                                        child: Text(role.label),
-                                      ),
-                                  ],
-                                  onChanged:
-                                      self || _busy.contains(user.id)
-                                          ? null
-                                          : (role) {
-                                            if (role != null) {
-                                              _change(user, role);
-                                            }
-                                          },
-                                ),
+                              Text('${user.username} · ${user.email}'),
+                              if (self) const Text('Ваша учётная запись'),
+                            ],
+                          ),
+                        ),
+                        SizedBox(
+                          width: 220,
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Роль',
+                              border: OutlineInputBorder(),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<Role>(
+                                isExpanded: true,
+                                key: ValueKey('${user.id}:${user.role}'),
+                                value: user.role,
+                                items: [
+                                  for (final role in Role.values)
+                                    DropdownMenuItem(
+                                      value: role,
+                                      child: Text(role.label),
+                                    ),
+                                ],
+                                onChanged:
+                                    self || _busy.contains(user.id)
+                                        ? null
+                                        : (role) {
+                                          if (role != null) {
+                                            _change(user, role);
+                                          }
+                                        },
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              ),
-            PaginationControls(
-              pageResult: _result,
-              onPageChanged: (p) {
-                _page = p;
-                _load();
-              },
-              onSizeChanged: (s) {
-                _size = s;
-                _page = 1;
-                _load();
+                  ),
+                );
               },
             ),
-          ],
+          PaginationControls(
+            pageResult: _result,
+            onPageChanged: (p) {
+              _page = p;
+              _load();
+            },
+            onSizeChanged: (s) {
+              _size = s;
+              _page = 1;
+              _load();
+            },
+          ),
         ],
-      ),
+      ],
     ),
   );
 }

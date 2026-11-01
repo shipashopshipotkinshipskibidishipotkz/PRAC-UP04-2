@@ -35,8 +35,10 @@ class AuthorQuery {
     return AuthorQuery(
       search: search ?? this.search,
       country: country == _unset ? this.country : country as String?,
-      birthYearFrom: birthYearFrom == _unset ? this.birthYearFrom : birthYearFrom as int?,
-      birthYearTo: birthYearTo == _unset ? this.birthYearTo : birthYearTo as int?,
+      birthYearFrom:
+          birthYearFrom == _unset ? this.birthYearFrom : birthYearFrom as int?,
+      birthYearTo:
+          birthYearTo == _unset ? this.birthYearTo : birthYearTo as int?,
       sortField: sortField ?? this.sortField,
       sortAscending: sortAscending ?? this.sortAscending,
       page: page ?? 1,
@@ -51,7 +53,9 @@ class AuthorQuery {
     final params = <String, String>{};
     if (search.isNotEmpty) params['search'] = search;
     if (country != null) params['country'] = country!;
-    if (birthYearFrom != null) params['birthYearFrom'] = birthYearFrom.toString();
+    if (birthYearFrom != null) {
+      params['birthYearFrom'] = birthYearFrom.toString();
+    }
     if (birthYearTo != null) params['birthYearTo'] = birthYearTo.toString();
     params['sort'] = '$sortField,${sortAscending ? "asc" : "desc"}';
     if (page > 1) params['page'] = page.toString();

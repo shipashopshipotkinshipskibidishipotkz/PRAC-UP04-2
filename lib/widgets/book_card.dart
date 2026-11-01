@@ -21,7 +21,15 @@ class BookCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authors = book.authorIds
-        .map((id) => seedAuthors.firstWhere((a) => a.id == id, orElse: () => seedAuthors.first).fullName)
+        .map(
+          (id) =>
+              seedAuthors
+                  .firstWhere(
+                    (a) => a.id == id,
+                    orElse: () => seedAuthors.first,
+                  )
+                  .fullName,
+        )
         .join(', ');
     final genre = book.genreIds
         .map((id) => genres[id] ?? '')
@@ -43,11 +51,16 @@ class BookCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       book.title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   if (book.isDeleted)
-                    const Chip(label: Text('Удалена'), visualDensity: VisualDensity.compact),
+                    const Chip(
+                      label: Text('Удалена'),
+                      visualDensity: VisualDensity.compact,
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -63,9 +76,15 @@ class BookCard extends StatelessWidget {
                   if (onEdit != null)
                     IconButton(icon: const Icon(Icons.edit), onPressed: onEdit),
                   if (book.isDeleted && onRestore != null)
-                    IconButton(icon: const Icon(Icons.restore), onPressed: onRestore),
+                    IconButton(
+                      icon: const Icon(Icons.restore),
+                      onPressed: onRestore,
+                    ),
                   if (!book.isDeleted && onDelete != null)
-                    IconButton(icon: const Icon(Icons.delete), onPressed: onDelete),
+                    IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: onDelete,
+                    ),
                 ],
               ),
             ],

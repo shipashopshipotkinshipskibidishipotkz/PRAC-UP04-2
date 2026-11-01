@@ -1,3 +1,4 @@
+import '../widgets/workspace_scaffold.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -287,7 +288,8 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
           context.go(widget.kind.path);
         }
       },
-      child: Scaffold(
+      child: WorkspaceScaffold(
+        location: widget.kind.path,
         appBar: AppBar(
           leading: IconButton(
             tooltip: 'Назад к списку',
@@ -299,7 +301,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
             '${editing ? 'Редактирование' : 'Создание'}: ${widget.kind.singular.toLowerCase()}',
           ),
         ),
-        body:
+        child:
             _loading
                 ? const LoadingState()
                 : _loadError != null

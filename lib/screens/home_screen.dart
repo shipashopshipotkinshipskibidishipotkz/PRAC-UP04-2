@@ -1,3 +1,4 @@
+import '../widgets/responsive_grid.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -63,34 +64,37 @@ class HomeScreen extends StatelessWidget {
     ];
     return WorkspaceScaffold(
       location: '/',
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Библиотечная система'),
-          actions: const [ApiConnectionButton()],
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text(
-              'Здравствуйте, ${auth.user?.fullName ?? ''}',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-            const SizedBox(height: 8),
-            Text('Ваша роль: ${auth.user?.role.label ?? ''}'),
-            const SizedBox(height: 24),
-            for (final link in links)
-              Card(
-                child: ListTile(
-                  contentPadding: const EdgeInsets.all(16),
-                  leading: Icon(link.$1),
-                  title: Text(link.$2),
-                  subtitle: Text(link.$3),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => context.go(link.$4),
+
+      appBar: AppBar(
+        title: const Text('Библиотечная система'),
+        actions: const [ApiConnectionButton()],
+      ),
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Text(
+            'Здравствуйте, ${auth.user?.fullName ?? ''}',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 8),
+          Text('Ваша роль: ${auth.user?.role.label ?? ''}'),
+          const SizedBox(height: 24),
+          ResponsiveGrid(
+            children: [
+              for (final link in links)
+                Card(
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.all(16),
+                    leading: Icon(link.$1),
+                    title: Text(link.$2),
+                    subtitle: Text(link.$3),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => context.go(link.$4),
+                  ),
                 ),
-              ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

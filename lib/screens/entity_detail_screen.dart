@@ -1,3 +1,4 @@
+import '../widgets/workspace_scaffold.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -109,7 +110,8 @@ class _EntityDetailScreenState extends State<EntityDetailScreen> {
       onPressed: () => context.go('${target.path}/$id'),
       child: Text(repository.title(target, id)),
     );
-    return Scaffold(
+    return WorkspaceScaffold(
+      location: kind.path,
       appBar: AppBar(
         leading: IconButton(
           tooltip: 'Назад к списку',
@@ -119,7 +121,7 @@ class _EntityDetailScreenState extends State<EntityDetailScreen> {
         title: Text('Карточка: ${kind.singular.toLowerCase()}'),
         actions: const [ApiConnectionButton()],
       ),
-      body:
+      child:
           _loading
               ? const LoadingState()
               : _error != null

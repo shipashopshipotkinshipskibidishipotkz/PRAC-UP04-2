@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: prac-up04-2
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: node --check server/mock-server.js
+    startCommand: node server/mock-server.js
+    healthCheckPath: /api/__health
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: CLIENT_ORIGIN
+        value: https://shipashopshipotkinshipskibidishipotkz.github.io
+      - key: TOKEN_SECRET
+        generateValue: true
