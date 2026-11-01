@@ -2,6 +2,17 @@
 {{flutter_build_config}}
 
 (() => {
+  const route = new URL(location.href).searchParams.get('__route');
+  if (route) {
+    try {
+      const target = new URL(route, location.origin);
+      const base = new URL(document.querySelector('base').href);
+      if (target.origin === location.origin && target.pathname.startsWith(base.pathname) &&
+          !target.searchParams.has('__route')) {
+        history.replaceState(null, '', target.pathname + target.search + target.hash);
+      }
+    } catch (_) { /* Ignore an invalid return address. */ }
+  }
   let finished = false;
   const ready = () => {
     if (finished) return;

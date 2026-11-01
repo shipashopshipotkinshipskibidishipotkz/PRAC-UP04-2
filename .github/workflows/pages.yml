@@ -36,7 +36,14 @@ jobs:
           flutter build web --release --no-web-resources-cdn --pwa-strategy=none --base-href "$base" --dart-define="API_BASE_URL=$API_BASE_URL"
           find build/web/canvaskit -type f -name '*.symbols' -delete
           find build/web/canvaskit -maxdepth 1 -type f -name 'skwasm*' -delete
-          cp build/web/index.html build/web/404.html
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('build/web/index.html').read_text()
+          tag = '<script src="flutter_bootstrap.js" async></script>'
+          redirect = '<script>location.replace(document.querySelector("base").href + "?__route=" + encodeURIComponent(location.pathname + location.search + location.hash));</script>'
+          assert tag in html
+          Path('build/web/404.html').write_text(html.replace(tag, redirect))
+          PY
           touch build/web/.nojekyll
       - uses: actions/upload-pages-artifact@v4
         with:
