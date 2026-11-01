@@ -8,7 +8,10 @@ import '../core/validators.dart';
 import '../models/catalog_query.dart';
 import '../models/entity_kind.dart';
 import '../models/library_entity.dart';
-import '../repositories/persistent_library_repository.dart';
+import '../repositories/library_repository.dart';
+import '../state/catalog_list_notifier.dart';
+import '../widgets/states.dart';
+import '../widgets/api_connection_button.dart';
 import '../widgets/app_scaffold.dart';
 import '../widgets/entity_actions.dart';
 import '../widgets/entity_table.dart';
@@ -31,11 +34,37 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
   final _search = TextEditingController();
   final _selected = <int>{};
   Timer? _debounce;
+  late final LibraryRepository _repository;
+  late CatalogListNotifier _notifier;
+
+  void _stateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _repositoryChanged() {
+    if (mounted) _reload();
+  }
+
+  Future<void> _reload() async {
+    final references = _repository
+        .loadReferences()
+        .then((_) {
+          if (mounted) setState(() {});
+        })
+        .catchError((Object _) {});
+    await _notifier.load(_query);
+    await references;
+  }
 
   @override
   void initState() {
     super.initState();
+    _repository = context.read<LibraryRepository>();
+    _notifier = CatalogListNotifier(_repository, widget.kind)
+      ..addListener(_stateChanged);
+    _repository.addListener(_repositoryChanged);
     _restoreQuery();
+    _reload();
   }
 
   void _restoreQuery() {
@@ -51,12 +80,22 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
       _debounce?.cancel();
       _restoreQuery();
       _selected.clear();
+      if (oldWidget.kind != widget.kind) {
+        _notifier.removeListener(_stateChanged);
+        _notifier.dispose();
+        _notifier = CatalogListNotifier(_repository, widget.kind)
+          ..addListener(_stateChanged);
+      }
+      _reload();
     }
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _repository.removeListener(_repositoryChanged);
+    _notifier.removeListener(_stateChanged);
+    _notifier.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -67,9 +106,17 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
       _query = query;
       _selected.clear();
     });
-    context.go(
-      Uri(path: widget.kind.path, queryParameters: query.toParams()).toString(),
-    );
+    _notifier.cancelPending();
+    final url =
+        Uri(
+          path: widget.kind.path,
+          queryParameters: query.toParams(),
+        ).toString();
+    if (GoRouterState.of(context).uri.toString() == url) {
+      _reload();
+    } else {
+      context.go(url);
+    }
   }
 
   void _filter(String name, String? value) {
@@ -84,9 +131,9 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final repository = context.watch<PersistentLibraryRepository>();
+    final repository = context.watch<LibraryRepository>();
     final kind = widget.kind;
-    final result = repository.find(kind, _query);
+    final result = _notifier.result;
     final columns = switch (kind) {
       EntityKind.books => [
         ('title', 'Название'),
@@ -163,6 +210,10 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const Align(
+            alignment: Alignment.centerRight,
+            child: ApiConnectionButton(),
+          ),
           Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
@@ -182,22 +233,6 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
           ),
           const SizedBox(height: 8),
           const Text('Библиотечная система · каталог'),
-          if (repository.storageNotice != null)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(repository.storageNotice!),
-                    TextButton(
-                      onPressed: repository.dismissNotice,
-                      child: const Text('Понятно'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           const SizedBox(height: 16),
           Card(
             child: Padding(
@@ -216,6 +251,7 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
                       border: const OutlineInputBorder(),
                     ),
                     onChanged: (value) {
+                      _notifier.cancelPending();
                       _debounce?.cancel();
                       _debounce = Timer(const Duration(milliseconds: 300), () {
                         if (mounted) _apply(_query.copyWith(search: value));
@@ -319,7 +355,17 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
               ),
             ),
           const SizedBox(height: 12),
-          if (result.items.isEmpty)
+          if (_notifier.status == CatalogStatus.loading)
+            const SizedBox(height: 260, child: LoadingState())
+          else if (_notifier.status == CatalogStatus.error)
+            Padding(
+              padding: const EdgeInsets.all(32),
+              child: ErrorState(
+                message: _notifier.error ?? 'Ошибка загрузки',
+                onRetry: _reload,
+              ),
+            )
+          else if (result.items.isEmpty)
             const Padding(
               padding: EdgeInsets.all(40),
               child: Center(
@@ -407,17 +453,18 @@ class _CatalogListScreenState extends State<CatalogListScreen> {
                   ),
               actions: actions,
             ),
-          PaginationControls(
-            pageResult: result,
-            onPageChanged: (page) => _apply(_query.copyWith(page: page)),
-            onSizeChanged: (size) => _apply(_query.copyWith(size: size)),
-          ),
+          if (_notifier.status == CatalogStatus.data)
+            PaginationControls(
+              pageResult: result,
+              onPageChanged: (page) => _apply(_query.copyWith(page: page)),
+              onSizeChanged: (size) => _apply(_query.copyWith(size: size)),
+            ),
         ],
       ),
     );
   }
 
-  List<Widget> _filters(PersistentLibraryRepository repository) {
+  List<Widget> _filters(LibraryRepository repository) {
     Widget dropdown(String name, String label, Map<String, String> options) =>
         SizedBox(
           width: 220,

@@ -6,7 +6,11 @@ import '../core/entity_fields.dart';
 import '../core/form_exit_guard.dart';
 import '../core/json_values.dart';
 import '../models/entity_kind.dart';
-import '../repositories/persistent_library_repository.dart';
+import '../repositories/library_repository.dart';
+import '../core/api_exceptions.dart';
+import '../models/library_entity.dart';
+import '../widgets/states.dart';
+import '../widgets/api_connection_button.dart';
 import '../widgets/relation_multi_select.dart';
 
 class EntityFormScreen extends StatefulWidget {
@@ -22,10 +26,13 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   final _controllers = <String, TextEditingController>{};
   final _focusNodes = <String, FocusNode>{};
   final _token = Object();
-  late final PersistentLibraryRepository _repository;
+  late final LibraryRepository _repository;
   late final FormExitGuard _guard;
   late final List<EntityField> _fields;
-  late final String _initialSignature;
+  String _initialSignature = '';
+  bool _loading = true;
+  bool _publisherLoading = false;
+  String? _loadError;
   int? _publisherId;
   List<int> _authorIds = [];
   List<int> _genreIds = [];
@@ -41,26 +48,94 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   @override
   void initState() {
     super.initState();
-    _repository = context.read<PersistentLibraryRepository>();
+    _repository = context.read<LibraryRepository>();
     _guard = context.read<FormExitGuard>();
     _guard.owner = _token;
     _guard.confirm = _confirmLeave;
     _fields = fieldsFor(widget.kind);
-    final entity =
-        widget.id == null ? null : _repository.byId(widget.kind, widget.id!);
-    _missing = widget.id != null && entity == null;
-    _deleted = entity?.isDeleted ?? false;
-    final data = entity?.toJson() ?? <String, dynamic>{};
     for (final field in _fields) {
       _focusNodes[field.name] = FocusNode();
-      _controllers[field.name] = TextEditingController(
-        text: fieldText(data, field.name),
-      );
+      _controllers[field.name] = TextEditingController();
     }
-    _publisherId = JsonValues.optionalInteger(data['publisherId']);
-    _authorIds = JsonValues.ids(data['authorIds']);
-    _genreIds = JsonValues.ids(data['genreIds']);
-    _initialSignature = _signature();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
+    try {
+      final loaded = await Future.wait<Object?>([
+        _repository.loadReferences().then((_) => null),
+        widget.id == null
+            ? Future<LibraryEntity?>.value(null)
+            : _repository.findById(widget.kind, widget.id!),
+      ]);
+      final entity = loaded[1] as LibraryEntity?;
+      final data = entity?.toJson() ?? <String, dynamic>{};
+      final publisherId = JsonValues.optionalInteger(data['publisherId']);
+      if (widget.kind == EntityKind.books) {
+        await _repository.loadAuthorsForPublisher(publisherId);
+      }
+      if (!mounted) return;
+      _deleted = entity?.isDeleted ?? false;
+      for (final field in _fields) {
+        _controllers[field.name]!.text = fieldText(data, field.name);
+      }
+      if (widget.kind == EntityKind.books && widget.id == null) {
+        _controllers['copiesAvailable']!.text = '0';
+      }
+      _publisherId = publisherId;
+      _authorIds = JsonValues.ids(data['authorIds']);
+      _genreIds = JsonValues.ids(data['genreIds']);
+      _initialSignature = _signature();
+      setState(() => _loading = false);
+    } on NotFoundException {
+      if (mounted) {
+        setState(() {
+          _missing = true;
+          _loading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _loadError =
+              error is ApiException
+                  ? error.message
+                  : 'Не удалось загрузить форму.';
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _changePublisher(int? id) async {
+    _publisherId = id;
+    _publisherLoading = true;
+    _changed();
+    try {
+      await _repository.loadAuthorsForPublisher(id);
+      if (!mounted || _publisherId != id) return;
+      final allowed =
+          _repository.authorsForPublisher(id).map((row) => row.id).toSet();
+      _authorIds = _authorIds.where(allowed.contains).toList();
+      _publisherLoading = false;
+      _changed();
+    } catch (error) {
+      if (!mounted || _publisherId != id) return;
+      setState(() {
+        _publisherLoading = false;
+        _saveErrors['authorIds'] =
+            error is ApiException
+                ? error.message
+                : 'Не удалось загрузить авторов. Выберите издательство повторно.';
+      });
+      _formKey.currentState?.validate();
+    }
   }
 
   @override
@@ -149,7 +224,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
   }
 
   Future<void> _submit() async {
-    if (_saving) return;
+    if (_saving || _loading || _publisherLoading) return;
     setState(() {
       _submitted = true;
       _saveErrors = {};
@@ -181,7 +256,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Изменения сохранены')));
-    } on FieldValidationException catch (error) {
+    } on ValidationException catch (error) {
       if (!mounted) return;
       setState(() => _saveErrors = error.errors);
       _formKey.currentState!.validate();
@@ -197,7 +272,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    context.watch<PersistentLibraryRepository>();
+    context.watch<LibraryRepository>();
     final editing = widget.id != null;
     final errors = _repository.validate(widget.kind, _data(), id: widget.id);
     final publisherOptions = _repository.publisherList;
@@ -219,12 +294,20 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
             icon: const Icon(Icons.arrow_back),
             onPressed: _saving ? null : () => context.go(widget.kind.path),
           ),
+          actions: const [ApiConnectionButton()],
           title: Text(
             '${editing ? 'Редактирование' : 'Создание'}: ${widget.kind.singular.toLowerCase()}',
           ),
         ),
         body:
-            _missing || _deleted
+            _loading
+                ? const LoadingState()
+                : _loadError != null
+                ? Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: ErrorState(message: _loadError!, onRetry: _load),
+                )
+                : _missing || _deleted
                 ? Center(
                   child: Text(
                     _missing
@@ -254,7 +337,7 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Изменения сохраняются в этом браузере. ${_dirty ? 'Есть несохранённые изменения.' : ''}',
+                              'Данные сохраняются на сервере. ${_dirty ? 'Есть несохранённые изменения.' : ''}',
                             ),
                             const SizedBox(height: 24),
                             for (final field in _fields) ...[
@@ -271,9 +354,10 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                               ],
                               TextFormField(
                                 key: ValueKey(field.name),
-                                        controller: _controllers[field.name],
-                                        focusNode: _focusNodes[field.name],
+                                controller: _controllers[field.name],
+                                focusNode: _focusNodes[field.name],
                                 enabled: !_saving,
+                                readOnly: field.name == 'copiesAvailable',
                                 maxLines: field.lines,
                                 keyboardType:
                                     field.numeric
@@ -286,13 +370,21 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                                 decoration: InputDecoration(
                                   labelText: field.label,
                                   hintText: field.hint,
+                                  helperText:
+                                      field.name == 'copiesAvailable'
+                                          ? 'Рассчитывается сервером по активным выдачам'
+                                          : null,
                                   border: const OutlineInputBorder(),
                                   errorMaxLines: 3,
                                 ),
                                 validator:
                                     (_) =>
                                         _saveErrors[field.name] ??
-                                            _repository.validate(widget.kind, _data(), id: widget.id)[field.name],
+                                        _repository.validate(
+                                          widget.kind,
+                                          _data(),
+                                          id: widget.id,
+                                        )[field.name],
                                 onChanged: (_) => _changed(),
                               ),
                               const SizedBox(height: 18),
@@ -317,32 +409,21 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                                     (_) =>
                                         _saveErrors['publisherId'] ??
                                         errors['publisherId'],
-                                onChanged:
-                                    _saving
-                                        ? null
-                                        : (id) {
-                                          _publisherId = id;
-                                          final allowed =
-                                              _repository
-                                                  .authorsForPublisher(id)
-                                                  .map((row) => row.id)
-                                                  .toSet();
-                                          _authorIds =
-                                              _authorIds
-                                                  .where(allowed.contains)
-                                                  .toList();
-                                          _changed();
-                                        },
+                                onChanged: _saving ? null : _changePublisher,
                               ),
                               const SizedBox(height: 18),
+                              if (_publisherLoading)
+                                const LinearProgressIndicator(
+                                  semanticsLabel: 'Загрузка авторов',
+                                ),
                               AbsorbPointer(
-                                absorbing: _saving,
+                                absorbing: _saving || _publisherLoading,
                                 child: RelationMultiSelect(
                                   label: 'Авторы',
                                   helper:
                                       _publisherId == null
                                           ? 'Сначала выберите издательство.'
-                                          : 'Авторы этого издательства и авторы без книг. Для издательства без книг доступны все авторы.',
+                                          : 'Список авторов зависит от выбранного издательства.',
                                   options: {
                                     for (final author in _repository
                                         .authorsForPublisher(_publisherId))
@@ -384,7 +465,10 @@ class _EntityFormScreenState extends State<EntityFormScreen> {
                               runSpacing: 12,
                               children: [
                                 FilledButton.icon(
-                                  onPressed: _saving ? null : _submit,
+                                  onPressed:
+                                      _saving || _publisherLoading
+                                          ? null
+                                          : _submit,
                                   icon:
                                       _saving
                                           ? const SizedBox(

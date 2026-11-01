@@ -4,34 +4,18 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'core/form_exit_guard.dart';
 import 'core/router.dart';
-import 'repositories/persistent_library_repository.dart';
+import 'core/api_client.dart';
+import 'repositories/api_library_repository.dart';
+import 'repositories/library_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
-  try {
-    final repository = await PersistentLibraryRepository.open();
-    runApp(LibraryApp(repository: repository));
-  } catch (error) {
-    runApp(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'Не удалось открыть хранилище браузера. Разрешите локальное хранение данных и обновите страницу.\n$error',
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  runApp(LibraryApp(repository: ApiLibraryRepository(buildDio())));
 }
 
 class LibraryApp extends StatefulWidget {
-  final PersistentLibraryRepository repository;
+  final LibraryRepository repository;
   const LibraryApp({super.key, required this.repository});
   @override
   State<LibraryApp> createState() => _LibraryAppState();

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../models/entity_kind.dart';
-import '../repositories/persistent_library_repository.dart';
+import '../repositories/library_repository.dart';
+import '../core/api_exceptions.dart';
 
 abstract final class EntityActions {
   static Future<void> delete(
     BuildContext context,
-    PersistentLibraryRepository repository,
+    LibraryRepository repository,
     EntityKind kind,
     Iterable<int> ids, {
     bool hard = false,
@@ -46,7 +47,7 @@ abstract final class EntityActions {
 
   static Future<void> restore(
     BuildContext context,
-    PersistentLibraryRepository repository,
+    LibraryRepository repository,
     EntityKind kind,
     int id,
   ) async {
@@ -68,7 +69,7 @@ abstract final class EntityActions {
         builder:
             (dialogContext) => AlertDialog(
               title: Text(
-                error is RelationException
+                error is ConflictException
                     ? 'Удаление невозможно'
                     : 'Не удалось выполнить операцию',
               ),

@@ -303,6 +303,30 @@ function applyFilters(collection, rows, q) {
     if (q.available === 'true') result = result.filter((b) => b.copiesAvailable > 0);
   }
 
+  if (collection === 'authors') {
+    if (q.country) result = result.filter((a) => a.country === q.country);
+    if (q.birthYearFrom) result = result.filter((a) => a.birthYear >= Number(q.birthYearFrom));
+    if (q.birthYearTo) result = result.filter((a) => a.birthYear <= Number(q.birthYearTo));
+    if (q.publisherId) {
+      const books = db.books.filter((b) => !b.deletedAt);
+      const matching = books.filter((b) => b.publisherId === Number(q.publisherId));
+      if (matching.length) {
+        const allowed = new Set(matching.flatMap((b) => b.authorIds));
+        const assigned = new Set(books.flatMap((b) => b.authorIds));
+        result = result.filter((a) => allowed.has(a.id) || !assigned.has(a.id));
+      }
+    }
+  }
+  if (collection === 'genres' && q.description) result = result.filter((g) => g.description.toLowerCase().includes(String(q.description).toLowerCase()));
+  if (collection === 'publishers' && q.city) result = result.filter((p) => p.city === q.city);
+  if (collection === 'readers' && q.cardStatus) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    result = result.filter((r) => {
+      const card = db.cards.find((c) => c.readerId === r.id && !c.deletedAt);
+      const expired = !card || new Date(card.expiresAt) < today;
+      return q.cardStatus === 'expired' ? expired : !expired;
+    });
+  }
   if (collection === 'loans') {
     if (q.readerId) result = result.filter((l) => l.readerId === Number(q.readerId));
     if (q.bookId) result = result.filter((l) => l.bookId === Number(q.bookId));
@@ -314,13 +338,18 @@ function applyFilters(collection, rows, q) {
   return result;
 }
 
-function applySort(rows, sort) {
+function applySort(rows, sort, collection) {
   if (!sort) return rows;
   const [field, dirRaw] = String(sort).split(',');
   const dir = (dirRaw || 'asc').toLowerCase() === 'desc' ? -1 : 1;
   return [...rows].sort((a, b) => {
-    const av = a[field];
-    const bv = b[field];
+    const value = (row) => {
+      if (collection === 'books' && field === 'publisherId') return db.publishers.find((p) => p.id === row.publisherId)?.name || '';
+      const expanded = collection === 'readers' ? expandReader(row) : row;
+      return field.split('.').reduce((result, key) => result == null ? null : result[key], expanded);
+    };
+    const av = value(a);
+    const bv = value(b);
     if (av == null && bv == null) return 0;
     if (av == null) return 1;
     if (bv == null) return -1;
@@ -330,10 +359,11 @@ function applySort(rows, sort) {
 }
 
 function paginate(rows, q) {
-  const page = Math.max(1, Number(q.page) || 1);
-  const size = Math.min(100, Math.max(1, Number(q.size) || 10));
+  let page = Math.max(1, Math.floor(Number(q.page)) || 1);
+  const size = Math.min(100, Math.max(1, Math.floor(Number(q.size)) || 10));
   const total = rows.length;
   const totalPages = Math.max(1, Math.ceil(total / size));
+  page = Math.min(page, totalPages);
   return {
     items: rows.slice((page - 1) * size, page * size),
     page,
@@ -348,6 +378,15 @@ function paginate(rows, q) {
 function validate(collection, body, id = null) {
   const e = {};
   const str = (v) => (typeof v === 'string' ? v.trim() : '');
+  const isbnKey = (v) => str(v).replace(/[\s-]/g, '').toUpperCase();
+  const textFields = {
+    books: [['title', 2, 200]], authors: [['fullName', 2, 150], ['country', 2, 100]],
+    genres: [['name', 2, 100], ['description', 1, 1000]], publishers: [['name', 2, 150], ['city', 2, 100]],
+    readers: [['fullName', 2, 150]],
+  };
+  for (const [key, min, max] of textFields[collection] || []) {
+    if (str(body[key]).length < min || str(body[key]).length > max) e[key] = `Длина от ${min} до ${max} символов`;
+  }
 
   if (collection === 'books') {
     if (!str(body.title)) e.title = 'Укажите название';
@@ -355,7 +394,7 @@ function validate(collection, body, id = null) {
 
     if (!str(body.isbn)) e.isbn = 'Укажите ISBN';
     else {
-      const dup = db.books.find((b) => b.isbn === str(body.isbn) && b.id !== id && !b.deletedAt);
+      const dup = db.books.find((b) => isbnKey(b.isbn) === isbnKey(body.isbn) && b.id !== id);
       if (dup) e.isbn = 'Книга с таким ISBN уже существует';
     }
 
@@ -374,7 +413,18 @@ function validate(collection, body, id = null) {
     if (!Number.isInteger(copies) || copies < 0) e.copiesTotal = 'Число экземпляров — целое, не меньше нуля';
   }
 
+  if (collection === 'books') {
+    if (!/^(\d{13}|\d{9}[\dX])$/.test(isbnKey(body.isbn))) e.isbn = 'ISBN: 13 цифр или 10 знаков';
+    if (!Number.isInteger(Number(body.pages)) || Number(body.pages) < 1 || Number(body.pages) > 100000) e.pages = 'Число страниц от 1 до 100000';
+    if (!db.publishers.some((p) => p.id === Number(body.publisherId) && !p.deletedAt)) e.publisherId = 'Издательство не найдено';
+    for (const [key, collectionName] of [['authorIds', 'authors'], ['genreIds', 'genres']]) {
+      if (!Array.isArray(body[key]) || !body[key].length || body[key].some((value) => !db[collectionName].some((r) => r.id === Number(value) && !r.deletedAt))) e[key] = 'Выберите действующие связанные записи';
+    }
+    const inUse = db.loans.filter((loan) => loan.bookId === id && !loan.returnedAt && !loan.deletedAt).length;
+    if (Number(body.copiesTotal) < Math.max(1, inUse) || Number(body.copiesTotal) > 10000) e.copiesTotal = `Число экземпляров от ${Math.max(1, inUse)} до 10000`;
+  }
   if (collection === 'authors') {
+    if (body.deathYear != null && (!Number.isInteger(Number(body.deathYear)) || Number(body.deathYear) < Number(body.birthYear) || Number(body.deathYear) > new Date().getFullYear())) e.deathYear = 'Год смерти от года рождения до текущего года';
     if (!str(body.fullName)) e.fullName = 'Укажите имя автора';
     if (body.birthYear != null) {
       const y = Number(body.birthYear);
@@ -403,13 +453,38 @@ function validate(collection, body, id = null) {
     if (!str(body.email)) e.email = 'Укажите адрес почты';
     else if (!/^[\w.+-]+@[\w-]+\.[\w.-]+$/.test(str(body.email))) e.email = 'Некорректный адрес почты';
     else {
-      const dup = db.readers.find((r) => r.email === str(body.email) && r.id !== id && !r.deletedAt);
+      const dup = db.readers.find((r) => r.email.toLowerCase() === str(body.email).toLowerCase() && r.id !== id);
       if (dup) e.email = 'Читатель с такой почтой уже зарегистрирован';
     }
   }
 
+  if (collection === 'readers') {
+    const phone = str(body.phone);
+    const digits = phone.replace(/\D/g, '');
+    if (!/^\+?[\d ()-]+$/.test(phone) || digits.length < 7 || digits.length > 15 || phone.length > 30) e.phone = 'Телефон: от 7 до 15 цифр';
+    const card = body.card || {};
+    const number = str(card.number).toUpperCase();
+    if (!/^RC-\d{6}$/.test(number)) e['card.number'] = 'Номер в формате RC-000001';
+    else if (db.cards.some((c) => c.number.toUpperCase() === number && c.readerId !== id)) e['card.number'] = 'Номер билета уже используется';
+    const issued = new Date(card.issuedAt);
+    const expires = new Date(card.expiresAt);
+    const validDate = (date) => Number.isFinite(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;
+    const today = new Date(); today.setHours(23, 59, 59, 999);
+    if (!validDate(issued) || issued > today) e['card.issuedAt'] = 'Укажите дату выдачи не позже сегодняшнего дня';
+    if (!validDate(expires) || expires <= issued) e['card.expiresAt'] = 'Срок действия должен быть позже даты выдачи';
+  }
   return e;
 }
+
+function saveCard(readerId, input) {
+  const card = db.cards.find((c) => c.readerId === readerId);
+  const fields = { number: String(input.number).trim().toUpperCase(), issuedAt: new Date(input.issuedAt).toISOString(), expiresAt: new Date(input.expiresAt).toISOString() };
+  if (card) Object.assign(card, fields); else push('cards', { readerId, ...fields });
+}
+function linkedCount(collection, id) {
+  return db.books.filter((book) => collection === 'publishers' ? book.publisherId === id : collection === 'authors' ? book.authorIds.includes(id) : collection === 'genres' ? book.genreIds.includes(id) : false).length;
+}
+
 
 
 // ──────────────────────────── HTTP-обвязка ────────────────────────────
@@ -649,6 +724,10 @@ async function handle(req, res, url) {
     const ids = Array.isArray(body && body.ids) ? body.ids.map(Number) : [];
     if (!ids.length) return send(res, 422, { message: 'Ошибка валидации', errors: { ids: 'Передайте непустой список идентификаторов' } });
 
+    for (const id of ids) {
+      const count = linkedCount(collection, id);
+      if (count) return fail(res, 409, `Удаление невозможно: связанных книг — ${count}. Учитываются и книги в корзине.`);
+    }
     let deleted = 0;
     for (const row of db[collection]) {
       if (ids.includes(row.id) && !row.deletedAt) {
@@ -687,7 +766,7 @@ async function handle(req, res, url) {
       }
 
       rows = applyFilters(collection, rows, q);
-      rows = applySort(rows, q.sort);
+      rows = applySort(rows, q.sort, collection);
       const page = paginate(rows, q);
       return send(res, 200, { ...page, items: page.items.map(expand) });
     }
@@ -712,6 +791,7 @@ async function handle(req, res, url) {
       const newId = push(collection, data);
       const row = db[collection].find((x) => x.id === newId);
       if (collection === 'books') row.copiesAvailable = row.copiesTotal;
+      if (collection === 'readers') saveCard(row.id, body.card);
       return send(res, 201, expand(row));
     }
 
@@ -729,6 +809,7 @@ async function handle(req, res, url) {
       if (Object.keys(errors).length) return send(res, 422, { message: 'Ошибка валидации', errors });
 
       Object.assign(row, normalize(collection, merged));
+      if (collection === 'readers') saveCard(row.id, merged.card);
       if (collection === 'books') {
         const inUse = db.loans.filter((l) => l.bookId === id && !l.returnedAt && !l.deletedAt).length;
         row.copiesAvailable = Math.max(0, row.copiesTotal - inUse);
@@ -744,6 +825,8 @@ async function handle(req, res, url) {
       const index = db[collection].findIndex((x) => x.id === id);
       if (index === -1) return fail(res, 404, 'Объект не найден');
 
+      const related = linkedCount(collection, id);
+      if (related) return fail(res, 409, `Удаление невозможно: связанных книг — ${related}. Учитываются и книги в корзине.`);
       if (hard) {
         if (collection === 'books') {
           const active = db.loans.some((l) => l.bookId === id && !l.returnedAt && !l.deletedAt);
@@ -754,6 +837,7 @@ async function handle(req, res, url) {
           if (active) return fail(res, 409, 'У читателя есть незакрытые выдачи');
         }
         db[collection].splice(index, 1);
+        if (collection === 'readers') db.cards = db.cards.filter((card) => card.readerId !== id);
       } else {
         db[collection][index].deletedAt = new Date().toISOString();
       }
@@ -782,13 +866,13 @@ function normalize(collection, body) {
         copiesTotal: num(body.copiesTotal) ?? 0,
       };
     case 'authors':
-      return { fullName: str(body.fullName), birthYear: num(body.birthYear), country: str(body.country) };
+      return { fullName: str(body.fullName), birthYear: num(body.birthYear), deathYear: num(body.deathYear), country: str(body.country) };
     case 'genres':
       return { name: str(body.name), description: str(body.description) };
     case 'publishers':
       return { name: str(body.name), city: str(body.city), foundedYear: num(body.foundedYear) };
     case 'readers':
-      return { fullName: str(body.fullName), email: str(body.email), phone: str(body.phone) };
+      return { fullName: str(body.fullName), email: str(body.email).toLowerCase(), phone: str(body.phone) };
     default:
       return { ...body };
   }

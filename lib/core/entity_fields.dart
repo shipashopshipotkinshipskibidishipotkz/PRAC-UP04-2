@@ -75,7 +75,7 @@ List<EntityField> fieldsFor(EntityKind kind) {
       EntityField(
         'foundedYear',
         'Год основания',
-        V.integer(min: 1, max: year),
+        V.integer(min: 1400, max: year),
         numeric: true,
       ),
     ],
